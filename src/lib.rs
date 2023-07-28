@@ -1,3 +1,4 @@
+pub mod regex;
 mod utils;
 
 use wasm_bindgen::prelude::*;

@@ -3,8 +3,11 @@
 export default function Home() {
   const submitHandler = async () => {
     const rregex = (await import('rregex'));
-    const post = rregex.get_debug_postexpr_string("ab|(b*f|e)*cd");
-    console.log(post);
+    const post = rregex.get_debug_graph_json("a|b*");
+    console.log(post.get_dot_str());
+    console.log(post.get_start());
+    console.log(post.get_fin());
+    post.free();
     rregex.greet();
   };
 

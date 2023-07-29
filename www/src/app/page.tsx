@@ -2,7 +2,10 @@
 
 export default function Home() {
   const submitHandler = async () => {
-    (await import('rregex')).greet();
+    const rregex = (await import('rregex'));
+    const post = rregex.get_debug_postexpr_string("ab|(b*f|e)*cd");
+    console.log(post);
+    rregex.greet();
   };
 
   return (

@@ -1,7 +1,7 @@
 use std::str::Chars;
 
-#[derive(Debug)]
-enum Token {
+#[derive(Debug, Clone, Copy)]
+pub enum Token {
     Char(char),
     Star,
     Pipe,
@@ -10,7 +10,7 @@ enum Token {
     Backslash,
 }
 
-struct RegexTokenizer<'a> {
+pub struct RegexTokenizer<'a> {
     char_iter: Chars<'a>,
 }
 

@@ -1,9 +1,9 @@
-mod nfa;
+mod enfa;
 mod parsing;
 mod tokens;
 
 use anyhow::Context;
-use nfa::{gen_epsilon_nfa_from_expr, FaRep};
+use enfa::{gen_epsilon_nfa_from_expr, FaRep};
 use parsing::tokens_to_postfix;
 use tokens::RegexTokenizer;
 use wasm_bindgen::prelude::*;

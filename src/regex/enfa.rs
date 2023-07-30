@@ -1,4 +1,8 @@
-use std::{cmp::Ordering, collections::BTreeSet, fmt};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    fmt,
+};
 
 use super::parsing::{ExprUnit, RegexOp};
 use anyhow::{Error, Result};
@@ -394,6 +398,21 @@ impl ENfa {
     }
 }
 
+fn merge_char_u32map_maps(a: &mut BTreeMap<char, BTreeSet<u32>>, b: BTreeMap<char, BTreeSet<u32>>) {
+    for (c, b_ids) in b {
+        match a.get_mut(&c) {
+            None => {
+                a.insert(c, b_ids);
+            }
+            Some(a_ids) => {
+                for b_id in b_ids {
+                    a_ids.insert(b_id);
+                }
+            }
+        }
+    }
+}
+
 impl Nfa {
     pub fn to_fa_rep(&self) -> FaRep {
         FaRep {
@@ -481,6 +500,83 @@ impl Nfa {
                 start: self.fin[0],
                 fin: vec![self.start],
             }
+        }
+    }
+
+    pub fn subset_construction(self) -> Self {
+        let mut subset_to_id: BTreeMap<BTreeSet<u32>, usize> = BTreeMap::new();
+        let mut id_to_next: Vec<BTreeMap<char, BTreeSet<u32>>> = vec![];
+        let mut singular_next: Vec<BTreeMap<char, BTreeSet<u32>>> = vec![];
+        singular_next.resize_with(self.graph.node_count(), || BTreeMap::new());
+
+        for (u, v, map) in self.graph.all_edges() {
+            let u = usize::try_from(u).unwrap();
+            for c in map {
+                if let Some(singular_subset) = singular_next[u].get_mut(c) {
+                    singular_subset.insert(v);
+                } else {
+                    let mut singular_subset = BTreeSet::new();
+                    singular_subset.insert(v);
+                    singular_next[u].insert(*c, singular_subset);
+                }
+            }
+        }
+
+        let mut fin = vec![];
+
+        let mut que = VecDeque::new();
+        let mut initial_state = BTreeSet::new();
+        initial_state.insert(self.start);
+        que.push_back(initial_state);
+        while !que.is_empty() {
+            let subset = que.pop_front().unwrap();
+            if subset_to_id.contains_key(&subset) {
+                continue;
+            }
+
+            let mut moves = BTreeMap::new();
+            for neigh_id in &subset {
+                merge_char_u32map_maps(
+                    &mut moves,
+                    singular_next[usize::try_from(*neigh_id).unwrap()].clone(),
+                )
+            }
+            for (_, next_subset) in &moves {
+                que.push_back(next_subset.clone());
+            }
+
+            let id = subset_to_id.len();
+            for fin_node in &self.fin {
+                if subset.contains(fin_node) {
+                    fin.push(u32::try_from(id).unwrap());
+                    break;
+                }
+            }
+            subset_to_id.insert(subset, id);
+            id_to_next.push(moves);
+        }
+
+        let mut graph = NfaGraph::new();
+
+        for (id, next_subsets) in id_to_next.iter().enumerate() {
+            let id = u32::try_from(id).unwrap();
+            graph.add_node(id);
+            for (c, next_subset) in next_subsets {
+                let next_id = u32::try_from(subset_to_id[next_subset]).unwrap();
+                if let Some(transition_chars) = graph.edge_weight_mut(id, next_id) {
+                    transition_chars.insert(*c);
+                } else {
+                    let mut transition_chars = BTreeSet::new();
+                    transition_chars.insert(*c);
+                    graph.add_edge(id, next_id, transition_chars);
+                }
+            }
+        }
+
+        Nfa {
+            graph,
+            start: 0,
+            fin,
         }
     }
 }

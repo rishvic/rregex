@@ -34,5 +34,5 @@ pub fn get_debug_graph_json(expr: &str) -> Result<FaRep, String> {
     let mut nfa = enfa.to_nfa();
     nfa.remove_unreachable_nodes();
 
-    return Ok(nfa.to_fa_rep());
+    return Ok(nfa.subset_construction().to_fa_rep());
 }

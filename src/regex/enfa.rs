@@ -6,6 +6,7 @@ use petgraph::{
     algo::tarjan_scc,
     dot::Dot,
     graphmap::{DiGraphMap, GraphMap},
+    visit::Dfs,
     Directed,
 };
 use serde::{Deserialize, Serialize};
@@ -400,5 +401,48 @@ impl Nfa {
             start: self.start,
             fin: self.fin.clone(),
         }
+    }
+
+    pub fn remove_unreachable_nodes(&mut self) {
+        let mut reachable_nodes = BTreeSet::new();
+        let mut dfs = Dfs::new(&self.graph, self.start);
+        while let Some(v) = dfs.next(&self.graph) {
+            reachable_nodes.insert(v);
+        }
+
+        let mut reachable_map = vec![];
+        reachable_map.resize(self.graph.node_count(), 0);
+
+        for v in 0..u32::try_from(self.graph.node_count()).unwrap() {
+            if !reachable_nodes.contains(&v) {
+                self.graph.remove_node(v);
+            }
+        }
+
+        for (i, v) in reachable_nodes.iter().enumerate() {
+            reachable_map[usize::try_from(*v).unwrap()] = u32::try_from(i).unwrap();
+        }
+
+        let mut graph = NfaGraph::new();
+        for v in 0..u32::try_from(reachable_nodes.len()).unwrap() {
+            graph.add_node(v);
+        }
+        for (u, v, w) in self.graph.all_edges() {
+            let (new_u, new_v) = (
+                reachable_map[usize::try_from(u).unwrap()],
+                reachable_map[usize::try_from(v).unwrap()],
+            );
+            graph.add_edge(new_u, new_v, w.clone());
+        }
+
+        self.graph = graph;
+        self.start = reachable_map[usize::try_from(self.start).unwrap()];
+        self.fin = self
+            .fin
+            .clone()
+            .into_iter()
+            .filter(|v| reachable_nodes.contains(v))
+            .map(|v| reachable_map[usize::try_from(v).unwrap()])
+            .collect();
     }
 }

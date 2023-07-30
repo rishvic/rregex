@@ -8,7 +8,7 @@ export default function Home() {
 
   const submitHandler = async () => {
     const rregex = (await import('rregex'));
-    const post = rregex.get_debug_graph_json("a|bc*");
+    const post = rregex.get_debug_graph_json("ab|(b*f|e)*cd");
     setDotStr(post.get_dot_str());
     console.log(post.get_dot_str());
     console.log(post.get_start());

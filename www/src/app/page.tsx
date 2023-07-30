@@ -1,6 +1,6 @@
 'use client';
-import {Graphviz} from 'graphviz-react';
 import {useState} from 'react';
+import {Graphviz} from 'graphviz-react';
 
 export default function Home() {
 
@@ -8,12 +8,21 @@ export default function Home() {
 
   const submitHandler = async () => {
     const rregex = (await import('rregex'));
-    const post = rregex.get_debug_graph_json("ab|(b*f|e)*cd");
-    setDotStr(post.get_dot_str());
-    console.log(post.get_dot_str());
-    console.log(post.get_start());
-    console.log(post.get_fin());
-    post.free();
+    try {
+      const enfa = rregex.get_enfa_from_regex("b*");
+      const nfa = enfa.convert_to_nfa();
+      const dfa = nfa.get_minimized_dfa();
+      const post = dfa.to_fa_rep();
+
+      setDotStr(post.get_dot_str());
+      console.log(post.get_dot_str());
+      console.log(post.get_start());
+      console.log(post.get_fin());
+      post.free();
+      enfa.free();
+    } catch (err) {
+      console.error("Error while converting regex", err);
+    }
     rregex.greet();
   };
 

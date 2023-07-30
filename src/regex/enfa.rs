@@ -96,6 +96,7 @@ impl Ord for ENfaEdge {
 type ENfaGraph = GraphMap<u32, BTreeSet<ENfaEdge>, Directed>;
 
 #[derive(Serialize, Debug, Clone)]
+#[wasm_bindgen]
 pub struct ENfa {
     graph: ENfaGraph,
     start: u32,
@@ -298,13 +299,15 @@ impl FaRep {
 pub type NfaIx = u32;
 pub type NfaGraph = DiGraphMap<NfaIx, BTreeSet<char>>;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[wasm_bindgen]
 pub struct Nfa {
     graph: NfaGraph,
     start: NfaIx,
     fin: Vec<NfaIx>,
 }
 
+#[wasm_bindgen]
 impl ENfa {
     pub fn to_fa_rep(&self) -> FaRep {
         FaRep {
@@ -313,7 +316,9 @@ impl ENfa {
             fin: self.fin.clone(),
         }
     }
+}
 
+impl ENfa {
     pub fn to_nfa(&self) -> Nfa {
         let mut epsilon_graph = DiGraphMap::new();
         for node in self.graph.nodes() {
@@ -413,6 +418,7 @@ fn merge_char_u32map_maps(a: &mut BTreeMap<char, BTreeSet<u32>>, b: BTreeMap<cha
     }
 }
 
+#[wasm_bindgen]
 impl Nfa {
     pub fn to_fa_rep(&self) -> FaRep {
         FaRep {
@@ -421,7 +427,9 @@ impl Nfa {
             fin: self.fin.clone(),
         }
     }
+}
 
+impl Nfa {
     pub fn remove_unreachable_nodes(&mut self) {
         let mut reachable_nodes = BTreeSet::new();
         let mut dfs = Dfs::new(&self.graph, self.start);

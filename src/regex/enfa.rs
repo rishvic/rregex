@@ -480,12 +480,18 @@ impl Nfa {
             graph.add_node(new_node);
 
             let mut fin = vec![self.start];
+            if self.fin.contains(&self.start) {
+                fin.push(new_node);
+            }
             for u in self.fin.iter() {
-                if *u == self.start {
-                    fin.push(new_node);
-                }
                 for (_, v, w) in graph_copy.edges(*u) {
-                    graph.add_edge(new_node, v, w.clone());
+                    if let Some(transition_chars) = graph.edge_weight_mut(new_node, v) {
+                        for new_char in w {
+                            transition_chars.insert(*new_char);
+                        }
+                    } else {
+                        graph.add_edge(new_node, v, w.clone());
+                    }
                 }
             }
 

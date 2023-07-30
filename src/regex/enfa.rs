@@ -445,4 +445,42 @@ impl Nfa {
             .map(|v| reachable_map[usize::try_from(v).unwrap()])
             .collect();
     }
+
+    pub fn reverse(self) -> Self {
+        let mut graph = NfaGraph::new();
+        for v in self.graph.nodes() {
+            graph.add_node(v);
+        }
+        for (u, v, w) in self.graph.all_edges() {
+            graph.add_edge(v, u, w.clone());
+        }
+
+        if self.fin.len() > 1 {
+            let graph_copy = graph.clone();
+            let new_node: u32 = u32::try_from(graph.node_count()).unwrap();
+            graph.add_node(new_node);
+
+            let mut fin = vec![self.start];
+            for u in self.fin.iter() {
+                if *u == self.start {
+                    fin.push(new_node);
+                }
+                for (_, v, w) in graph_copy.edges(*u) {
+                    graph.add_edge(new_node, v, w.clone());
+                }
+            }
+
+            Nfa {
+                graph,
+                start: new_node,
+                fin,
+            }
+        } else {
+            Nfa {
+                graph,
+                start: self.fin[0],
+                fin: vec![self.start],
+            }
+        }
+    }
 }

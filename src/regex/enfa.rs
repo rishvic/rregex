@@ -1,8 +1,14 @@
+use std::collections::BTreeSet;
 use std::fmt;
 
 use super::parsing::{ExprUnit, RegexOp};
 use anyhow::{Error, Result};
-use petgraph::{dot::Dot, graphmap::GraphMap, Directed};
+use petgraph::{
+    algo::tarjan_scc,
+    dot::Dot,
+    graphmap::{DiGraphMap, GraphMap},
+    Directed,
+};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -22,6 +28,17 @@ impl fmt::Debug for ENfaEdge {
                 ENfaEdge::Char(c) => *c,
             }
         )
+    }
+}
+
+impl TryFrom<ENfaEdge> for char {
+    type Error = ENfaEdge;
+
+    fn try_from(other: ENfaEdge) -> Result<Self, Self::Error> {
+        match other {
+            ENfaEdge::Char(c) => Ok(c),
+            v => Err(v),
+        }
     }
 }
 
@@ -215,7 +232,108 @@ impl FaRep {
     }
 }
 
+pub type NfaIx = u32;
+pub type NfaGraph = DiGraphMap<NfaIx, BTreeSet<char>>;
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Nfa {
+    graph: NfaGraph,
+    start: NfaIx,
+    fin: Vec<NfaIx>,
+}
+
 impl ENfa {
+    pub fn to_fa_rep(&self) -> FaRep {
+        FaRep {
+            dot_str: format!("{:?}", Dot::new(&self.graph)),
+            start: self.start,
+            fin: self.fin.clone(),
+        }
+    }
+
+    pub fn to_nfa(&self) -> Nfa {
+        let mut epsilon_graph = DiGraphMap::new();
+        for node in self.graph.nodes() {
+            epsilon_graph.add_node(node);
+        }
+        self.graph
+            .all_edges()
+            .filter(|(_, _, w)| matches!(w, ENfaEdge::Epsilon))
+            .for_each(|(i, j, _)| {
+                epsilon_graph.add_edge(i, j, ());
+            });
+
+        let components = tarjan_scc(&epsilon_graph);
+        let mut graph = NfaGraph::new();
+        let mut id_to_comp = Vec::with_capacity(epsilon_graph.node_count());
+        id_to_comp.resize(epsilon_graph.node_count(), 0u32);
+        for (i, component) in components.iter().enumerate() {
+            graph.add_node(u32::try_from(i).unwrap());
+            for v in component {
+                id_to_comp[usize::try_from(*v).unwrap()] = u32::try_from(i).unwrap();
+            }
+        }
+
+        let mut comp_epsilon_graph: DiGraphMap<u32, ()> = DiGraphMap::new();
+        for (i, j, w) in self.graph.all_edges() {
+            let (comp1, comp2) = (
+                id_to_comp[usize::try_from(i).unwrap()],
+                id_to_comp[usize::try_from(j).unwrap()],
+            );
+            if comp1 == comp2 {
+                continue;
+            }
+
+            match w {
+                ENfaEdge::Char(c) => {
+                    if let Some(transition_chars) = graph.edge_weight_mut(comp1, comp2) {
+                        transition_chars.insert(*c);
+                    } else {
+                        let mut transition_chars = BTreeSet::new();
+                        transition_chars.insert(*c);
+                        graph.add_edge(comp1, comp2, transition_chars);
+                    }
+                }
+                ENfaEdge::Epsilon => {
+                    comp_epsilon_graph.add_edge(comp1, comp2, ());
+                }
+            }
+        }
+
+        let mut fin_comps = BTreeSet::new();
+        for v in &self.fin {
+            fin_comps.insert(id_to_comp[usize::try_from(*v).unwrap()]);
+        }
+
+        let mut graph_copy = graph.clone();
+        for u in 0..u32::try_from(components.len()).unwrap() {
+            for (_, v, _) in comp_epsilon_graph.edges(u) {
+                if fin_comps.contains(&v) {
+                    fin_comps.insert(u);
+                }
+                for (_, w, m) in graph_copy.edges(v) {
+                    if let Some(transition_chars) = graph.edge_weight_mut(u, w) {
+                        transition_chars.append(&mut m.clone());
+                    } else {
+                        graph.add_edge(u, w, m.clone());
+                    }
+                }
+            }
+
+            for (_, v, w) in graph.edges(u) {
+                graph_copy.add_edge(u, v, w.clone());
+            }
+        }
+
+        Nfa {
+            graph,
+            start: id_to_comp[usize::try_from(self.start).unwrap()],
+            fin: fin_comps.into_iter().collect(),
+        }
+    }
+}
+
+impl Nfa {
     pub fn to_fa_rep(&self) -> FaRep {
         FaRep {
             dot_str: format!("{:?}", Dot::new(&self.graph)),

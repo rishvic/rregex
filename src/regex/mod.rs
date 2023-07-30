@@ -31,5 +31,7 @@ pub fn get_debug_graph_json(expr: &str) -> Result<FaRep, String> {
     }
     let enfa = enfa.unwrap();
 
-    return Ok(enfa.to_fa_rep());
+    let nfa = enfa.to_nfa();
+
+    return Ok(nfa.to_fa_rep());
 }

@@ -585,4 +585,11 @@ impl Nfa {
             fin,
         }
     }
+
+    pub fn minimized_dfa(self) -> Self {
+        self.reverse()
+            .subset_construction()
+            .reverse()
+            .subset_construction()
+    }
 }

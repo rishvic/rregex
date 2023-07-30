@@ -1,5 +1,4 @@
-use std::collections::BTreeSet;
-use std::fmt;
+use std::{cmp::Ordering, collections::BTreeSet, fmt};
 
 use super::parsing::{ExprUnit, RegexOp};
 use anyhow::{Error, Result};
@@ -42,18 +41,81 @@ impl TryFrom<ENfaEdge> for char {
     }
 }
 
+impl PartialEq<ENfaEdge> for ENfaEdge {
+    fn eq(&self, other: &ENfaEdge) -> bool {
+        match self {
+            ENfaEdge::Epsilon => match other {
+                ENfaEdge::Epsilon => true,
+                ENfaEdge::Char(_) => false,
+            },
+            ENfaEdge::Char(c1) => match other {
+                ENfaEdge::Epsilon => false,
+                ENfaEdge::Char(c2) => c1.eq(c2),
+            },
+        }
+    }
+}
+
+impl Eq for ENfaEdge {}
+
+impl PartialOrd<ENfaEdge> for ENfaEdge {
+    fn partial_cmp(&self, other: &ENfaEdge) -> Option<Ordering> {
+        match self {
+            ENfaEdge::Epsilon => match other {
+                ENfaEdge::Epsilon => Some(Ordering::Equal),
+                ENfaEdge::Char(_) => Some(Ordering::Less),
+            },
+            ENfaEdge::Char(c1) => match other {
+                ENfaEdge::Epsilon => Some(Ordering::Greater),
+                ENfaEdge::Char(c2) => c1.partial_cmp(c2),
+            },
+        }
+    }
+}
+
+impl Ord for ENfaEdge {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self {
+            ENfaEdge::Epsilon => match other {
+                ENfaEdge::Epsilon => Ordering::Equal,
+                ENfaEdge::Char(_) => Ordering::Less,
+            },
+            ENfaEdge::Char(c1) => match other {
+                ENfaEdge::Epsilon => Ordering::Greater,
+                ENfaEdge::Char(c2) => c1.cmp(c2),
+            },
+        }
+    }
+}
+
+type ENfaGraph = GraphMap<u32, BTreeSet<ENfaEdge>, Directed>;
+
 #[derive(Serialize, Debug, Clone)]
 pub struct ENfa {
-    graph: GraphMap<u32, ENfaEdge, Directed>,
+    graph: ENfaGraph,
     start: u32,
     fin: Vec<u32>,
+}
+
+impl ENfa {
+    fn add_edge(&mut self, i: u32, j: u32, w: ENfaEdge) {
+        if let Some(transition_chars) = self.graph.edge_weight_mut(i, j) {
+            transition_chars.insert(w);
+        } else {
+            let mut edge_map = BTreeSet::new();
+            edge_map.insert(w);
+            self.graph.add_edge(i, j, edge_map);
+        }
+    }
 }
 
 fn gen_char_nfa(c: char) -> ENfa {
     let mut graph = GraphMap::with_capacity(2, 1);
     let start_node = graph.add_node(0);
     let final_node = graph.add_node(1);
-    graph.add_edge(start_node, final_node, ENfaEdge::Char(c));
+    let mut edge_map = BTreeSet::new();
+    edge_map.insert(ENfaEdge::Char(c));
+    graph.add_edge(start_node, final_node, edge_map);
     ENfa {
         graph,
         start: start_node,
@@ -61,17 +123,14 @@ fn gen_char_nfa(c: char) -> ENfa {
     }
 }
 
-fn merge_graphmaps(
-    g1: &mut GraphMap<u32, ENfaEdge, Directed>,
-    g2: GraphMap<u32, ENfaEdge, Directed>,
-) {
+fn merge_graphmaps(g1: &mut ENfaGraph, g2: ENfaGraph) {
     let ord1 = u32::try_from(g1.node_count()).unwrap();
     let fin_ord = u32::try_from(g1.node_count() + g2.node_count()).unwrap();
     for i in ord1..fin_ord {
         g1.add_node(i);
     }
     for (i, j, w) in g2.all_edges() {
-        g1.add_edge(ord1 + i, ord1 + j, *w);
+        g1.add_edge(ord1 + i, ord1 + j, w.clone());
     }
 }
 
@@ -94,17 +153,16 @@ pub fn union_nfa(mut nfa1: ENfa, mut nfa2: ENfa) -> ENfa {
 
     // Fix start node.
     let (start1, start2) = (nfa1.start, nfa2.start);
-    nfa1.graph.add_edge(start_node, start1, ENfaEdge::Epsilon);
-    nfa1.graph
-        .add_edge(start_node, ord1 + start2, ENfaEdge::Epsilon);
+    nfa1.add_edge(start_node, start1, ENfaEdge::Epsilon);
+    nfa1.add_edge(start_node, ord1 + start2, ENfaEdge::Epsilon);
     nfa1.start = start_node;
 
     // Add all end nodes edges.
-    for i in nfa1.fin.into_iter() {
-        nfa1.graph.add_edge(i, fin_node, ENfaEdge::Epsilon);
+    for i in nfa1.fin.clone() {
+        nfa1.add_edge(i, fin_node, ENfaEdge::Epsilon);
     }
-    for j in nfa2.fin.into_iter() {
-        nfa1.graph.add_edge(ord1 + j, fin_node, ENfaEdge::Epsilon);
+    for j in nfa2.fin {
+        nfa1.add_edge(ord1 + j, fin_node, ENfaEdge::Epsilon);
     }
     nfa1.fin = vec![fin_node];
 
@@ -121,7 +179,7 @@ pub fn concat_nfa(mut nfa1: ENfa, mut nfa2: ENfa) -> ENfa {
         let ord2 = u32::try_from(nfa2.graph.node_count()).unwrap();
         merge_graphmaps(&mut nfa2.graph, nfa1.graph);
         for i in nfa1.fin {
-            nfa2.graph.add_edge(ord2 + i, nfa2.start, ENfaEdge::Epsilon);
+            nfa2.add_edge(ord2 + i, nfa2.start, ENfaEdge::Epsilon);
         }
         ENfa {
             graph: nfa2.graph,
@@ -131,8 +189,8 @@ pub fn concat_nfa(mut nfa1: ENfa, mut nfa2: ENfa) -> ENfa {
     } else {
         let ord1 = u32::try_from(nfa1.graph.node_count()).unwrap();
         merge_graphmaps(&mut nfa1.graph, nfa2.graph);
-        for i in nfa1.fin {
-            nfa1.graph.add_edge(i, ord1 + nfa2.start, ENfaEdge::Epsilon);
+        for i in nfa1.fin.clone() {
+            nfa1.add_edge(i, ord1 + nfa2.start, ENfaEdge::Epsilon);
         }
         ENfa {
             graph: nfa1.graph,
@@ -148,11 +206,11 @@ pub fn star_nfa(nfa: &mut ENfa) {
     let fin_node = u32::try_from(nfa.graph.node_count()).unwrap();
     nfa.graph.add_node(fin_node);
 
-    nfa.graph.add_edge(start_node, nfa.start, ENfaEdge::Epsilon);
-    nfa.graph.add_edge(start_node, fin_node, ENfaEdge::Epsilon);
-    for j in nfa.fin.iter() {
-        nfa.graph.add_edge(*j, nfa.start, ENfaEdge::Epsilon);
-        nfa.graph.add_edge(*j, fin_node, ENfaEdge::Epsilon);
+    nfa.add_edge(start_node, nfa.start, ENfaEdge::Epsilon);
+    nfa.add_edge(start_node, fin_node, ENfaEdge::Epsilon);
+    for j in nfa.fin.clone().iter() {
+        nfa.add_edge(*j, nfa.start, ENfaEdge::Epsilon);
+        nfa.add_edge(*j, fin_node, ENfaEdge::Epsilon);
     }
 
     nfa.start = start_node;
@@ -258,7 +316,7 @@ impl ENfa {
         }
         self.graph
             .all_edges()
-            .filter(|(_, _, w)| matches!(w, ENfaEdge::Epsilon))
+            .filter(|(_, _, w)| w.contains(&ENfaEdge::Epsilon))
             .for_each(|(i, j, _)| {
                 epsilon_graph.add_edge(i, j, ());
             });
@@ -284,18 +342,20 @@ impl ENfa {
                 continue;
             }
 
-            match w {
-                ENfaEdge::Char(c) => {
-                    if let Some(transition_chars) = graph.edge_weight_mut(comp1, comp2) {
-                        transition_chars.insert(*c);
-                    } else {
-                        let mut transition_chars = BTreeSet::new();
-                        transition_chars.insert(*c);
-                        graph.add_edge(comp1, comp2, transition_chars);
+            for elem in w {
+                match elem {
+                    ENfaEdge::Char(c) => {
+                        if let Some(transition_chars) = graph.edge_weight_mut(comp1, comp2) {
+                            transition_chars.insert(*c);
+                        } else {
+                            let mut transition_chars = BTreeSet::new();
+                            transition_chars.insert(*c);
+                            graph.add_edge(comp1, comp2, transition_chars);
+                        }
                     }
-                }
-                ENfaEdge::Epsilon => {
-                    comp_epsilon_graph.add_edge(comp1, comp2, ());
+                    ENfaEdge::Epsilon => {
+                        comp_epsilon_graph.add_edge(comp1, comp2, ());
+                    }
                 }
             }
         }

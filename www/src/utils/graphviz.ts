@@ -6,12 +6,10 @@ export function makeDotStrProper(
   start: number,
   finStates: number[]
 ) {
-  let properStr = dotStr
-    .replace(DOTSTR_LAST_CURLY_BRACKET_RE, '    rankdir = LR\n}\n')
-    .replace(
-      `[ label = "${start}" ]`,
-      `[ label = "${start}" shape = Mcircle ]`
-    );
+  let properStr = dotStr.replace(
+    DOTSTR_LAST_CURLY_BRACKET_RE,
+    '    rankdir = LR\n}\n'
+  );
 
   finStates.forEach(node => {
     properStr = properStr.replace(
@@ -20,10 +18,9 @@ export function makeDotStrProper(
     );
   });
 
-  properStr = properStr.replaceAll(
-    DOTSTR_BASE_LABEL_RE,
-    '[ label = "$1" shape = circle ]'
-  );
+  properStr = properStr
+    .replace(`[ label = "${start}"`, `[ label = "${start}, s"`)
+    .replaceAll(DOTSTR_BASE_LABEL_RE, '[ label = "$1" shape = circle ]');
 
   return properStr;
 }

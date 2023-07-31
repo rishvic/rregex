@@ -1,5 +1,5 @@
 'use client';
-import {useState} from 'react';
+import {useEffect, useState} from 'react';
 import dynamic from 'next/dynamic';
 import RegexForm from '@/components/RegexForm';
 import {makeDotStrProper} from '@/utils/graphviz';
@@ -33,6 +33,8 @@ export default function Home() {
   const [enfaDotStr, setEnfaDotStr] = useState<string>('');
   const [nfaDotStr, setNfaDotStr] = useState<string>('');
   const [dfaDotStr, setDfaDotStr] = useState<string>('');
+  const [width, setWidth] = useState<number | undefined>(undefined);
+  const [height, setHeight] = useState<number | undefined>(undefined);
 
   const submitHandler = async (regex: string) => {
     const rregex = await rregexPromise;
@@ -67,8 +69,10 @@ export default function Home() {
     }
   };
 
-  const width = (2 / 3) * window.innerWidth;
-  const height = (2 / 5) * window.innerHeight;
+  useEffect(() => {
+    setWidth((2 / 3) * window.innerWidth);
+    setHeight((2 / 5) * window.innerHeight);
+  }, []);
 
   return (
     <main className="container mx-auto">
@@ -81,7 +85,7 @@ export default function Home() {
           <hr />
           <h2 className="text-2xl mt-4">ε-NFA</h2>
           <Graphviz
-            className="w-5/6 border-4 border-indigo-500 rounded-md mb-6"
+            className="w-5/6 border-4 border-gray-400 rounded-md mb-6"
             dot={enfaDotStr}
             options={{
               height,
@@ -95,7 +99,7 @@ export default function Home() {
           <hr />
           <h2 className="text-2xl mt-4">NFA</h2>
           <Graphviz
-            className="w-5/6 border-4 border-indigo-500 rounded-md mb-6"
+            className="w-5/6 border-4 border-gray-400 rounded-md mb-6"
             dot={nfaDotStr}
             options={{
               height,
@@ -109,7 +113,7 @@ export default function Home() {
           <hr />
           <h2 className="text-2xl mt-4">DFA</h2>
           <Graphviz
-            className="w-5/6 border-4 border-indigo-500 rounded-md mb-6"
+            className="w-5/6 border-4 border-gray-400 rounded-md mb-6"
             dot={dfaDotStr}
             options={{
               height,
